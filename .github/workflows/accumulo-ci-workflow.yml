@@ -1,0 +1,61 @@
+#  Licensed to the Apache Software Foundation (ASF) under one or more
+#  contributor license agreements.  See the NOTICE file distributed with
+#  this work for additional information regarding copyright ownership.
+#  The ASF licenses this file to You under the Apache License, Version 2.0
+#  (the "License"); you may not use this file except in compliance with
+#  the License.  You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+
+name: build
+
+on:
+  push:
+    branches: ['*']
+  pull_request:
+    branches: ['*']
+  schedule:
+    # Run daily at 3pm UTC
+    - cron: '0 15 * * *'
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: ['Ubuntu']
+        java_version: ['11']
+    timeout-minutes: 60
+    runs-on: ${{ matrix.os }}-latest
+    name: ${{ matrix.os }} - Java ${{ matrix.java_version }} 
+    steps:
+      - name: Checkout apache/accumulo.git
+        uses: actions/checkout@v2
+      - name: Set up Java ${{ matrix.java_version }}
+        uses: actions/setup-java@v1.3.0
+        with:
+          java-version: ${{ matrix.java_version }} 
+      - name: Restore ~/.m2/repository
+        uses: actions/cache@v2
+        with:
+          path: |
+            ~/.m2/repository/
+            !~/.m2/repository/org/apache/accumulo
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}-${{ hashFiles('.github/workflows/*.yml') }}
+      - name: mvn -B -V clean verify javadoc:jar -DskipITs -ff -ntp
+        env:
+          MAVEN_OPTS: -Xmx1g -XX:ReservedCodeCacheSize=1g -XX:+UseG1GC -Dorg.slf4j.simpleLogger.defaultLogLevel=INFO
+        run: mvn -B -V clean verify javadoc:jar -DskipITs -ff -ntp 
+      - name: mvn -B -V clean verify -PskipQA,sec-bugs -Dspotbugs.skip=false -Dspotbugs.timeout=1800000 -ff -ntp
+        env:
+          MAVEN_OPTS: -Xmx1g -XX:ReservedCodeCacheSize=1g -XX:+UseG1GC -Dorg.slf4j.simpleLogger.defaultLogLevel=INFO
+        run: mvn -B -V clean verify -PskipQA,sec-bugs -Dspotbugs.skip=false -Dspotbugs.timeout=1800000 -ff -ntp
+      - name: mvn -B -V clean package -DskipTests -Dhadoop.version=3.0.3 -ff -ntp
+        env:
+          MAVEN_OPTS: -Xmx1g -XX:ReservedCodeCacheSize=1g -XX:+UseG1GC -Dorg.slf4j.simpleLogger.defaultLogLevel=INFO
+        run: mvn -B -V clean package -DskipTests -Dhadoop.version=3.0.3 -ff -ntp
